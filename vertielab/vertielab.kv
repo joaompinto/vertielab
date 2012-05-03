@@ -40,7 +40,12 @@
                 source: 'data/remove.png'
                 pos: self.parent.center_x-20, self.parent.center_y-20
                 size: 40, 40
-
+        Button:
+            name: 'impulse'
+            text: 'Impulse'
+            on_press: root.on_press_tool(self)
+            size_hint: 1, None
+            height: 50
         Button:
             name: 'clear_all'
             text: "Clear"

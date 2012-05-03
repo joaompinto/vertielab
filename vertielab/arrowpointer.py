@@ -1,5 +1,3 @@
-#!/usr/bin/python
-# -*- coding: utf-8 -*-
 """
 @copyright:
   (C) Copyright 2012, Open Source Game Seed <devs at osgameseed dot org>
@@ -19,21 +17,23 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-import kivy
-import os
-kivy.require('1.0.5')
+from kivy.uix.widget import Widget
+from kivy.properties import ObjectProperty
+from kivy.graphics import Color, Line
 
-from kivy.config import Config
-from kivy.lang import Builder
+class ArrowPointer(Widget):
+    arrow_tip = ObjectProperty(None)
 
-Builder.load_file('vertielab/vertielab.kv')
+    def __init__(self, **kwargs):
+        super(ArrowPointer, self).__init__(**kwargs)
+        with self.canvas.after:
+            Color ([200, 200, 200])
+            self.arrow_tip = Line(points=(0,0, 200, 200))
+        self.bind(pos=self._update_arrow_points)
+        self._update_arrow_points(self, self.pos)
 
-from vertielab.app import VertieLabApp
-
-if __name__ in ('__android__', '__main__'):
-    os.environ['SDL_VIDEO_CENTERED'] = '1'
-    Config.set('input', 'mouse', 'mouse,disable_multitouch')
-    Config.set('graphics', 'width', '800')
-    Config.set('graphics', 'height', '600')
-
-    VertieLabApp().run()
+    def _update_arrow_points(self, object, pos):
+        offset = 50
+        x,y = pos
+        self.arrow_tip.points = (x - offset, y - offset, x + offset, y + offset)
+        print self.arrow_tip

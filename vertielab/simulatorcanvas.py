@@ -7,14 +7,14 @@
   it under the terms of the GNU General Public License as published by
   the Free Software Foundation, either version 3 of the License, or
   (at your option) any later version.
-    
+
   This program is distributed in the hope that it will be useful,
   but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOScircle_mapE.  See the
   GNU General Public License for more details.
-    
+
   You should have received a copy of the GNU General Public License
-  along with this program.  If not, see <http://www.gnu.org/licenses/>.    
+  along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 import cymunk as cy
 from math import hypot
@@ -28,6 +28,7 @@ from kivy.clock import Clock
 from kivy.core.image import Image
 from kivy.vector import Vector
 from vertielab.linehelper import segment_nearest_point
+from vertielab.arrowpointer import ArrowPointer
 
 class SimulatorCanvas(Widget):
 
@@ -37,10 +38,9 @@ class SimulatorCanvas(Widget):
 
     # Physical simulation objects
     cbounds = ListProperty([])
-    shape_map = DictProperty({})
-    cmap = DictProperty({})    # Circles map
-    smap = DictProperty({})    # Static segment map
-    body_list = ListProperty([])
+    shape_map = DictProperty({}) # Map bodies to shapes
+    circle_map = DictProperty({})  # Map bodies to graphical circles
+    segment_map = DictProperty({})    # Static segment map
     world = ObjectProperty(None) # Simulation world
 
     def __init__(self, **kwargs):
@@ -48,9 +48,8 @@ class SimulatorCanvas(Widget):
         #self._hue = 0
         self.init_physics()
         self.bind(size=self.update_bounds, pos=self.update_bounds)
-        self.texture = Image(join(dirname(__file__), 
+        self.texture = Image(join(dirname(__file__),
             '..', 'data', 'circle.png'), mipmap=True).texture
-        self.bind(tool_name=self.on_tool_change)
         Clock.schedule_interval(self.step,1/30)
         self.static_tool = False
 
@@ -108,7 +107,7 @@ class SimulatorCanvas(Widget):
         self.update_objects()
 
     def update_objects(self):
-        for body, obj in self.cmap.iteritems():
+        for body, obj in self.circle_map.iteritems():
             p = body.position
             radius, color, rect = obj
             rect.pos = p.x - radius, p.y - radius
@@ -131,10 +130,11 @@ class SimulatorCanvas(Widget):
                 texture=self.texture,
                 pos=(x - radius, y - radius),
                 size=(radius * 2, radius * 2))
-        self.cmap[body] = (radius, color, rect)
+        self.circle_map[body] = (radius, color, rect)
         self.shape_map[body] = circle
 
     def add_line(self, line):
+        """ add the line to the simulation segement map and to canvas """
         assert(len(line.points) == 4)
         points = line.points
         a = Vector(points[0], points[1])
@@ -145,10 +145,7 @@ class SimulatorCanvas(Widget):
         self.space.add_static(seg)
         with self.canvas:
             line = Line(points=(a.x, a.y, b.x, b.y))
-        self.smap[seg] = line
-
-    def on_tool_change(self, object, value):
-        pass
+        self.segment_map[seg] = line
 
     def on_touch_down(self, touch):
         if super(SimulatorCanvas, self).on_touch_down(touch):
@@ -156,7 +153,7 @@ class SimulatorCanvas(Widget):
         if not self.collide_point(touch.x, touch.y):
             return False
         userdata = touch.ud
-        if self.tool_name == 'circle':
+        if self.tool_name == 'circle': # Starting a circle
             radius = 20
             with self.canvas:
                 rect = Rectangle(
@@ -165,40 +162,20 @@ class SimulatorCanvas(Widget):
                     size=(radius * 2, radius * 2))
             self.circle_center = Vector(touch.x, touch.y)
             userdata['circle'] = rect
-        elif self.tool_name == 'polygon':
+        elif self.tool_name == 'polygon': # Starting a static line segment
             with self.canvas:
                 userdata['line'] = Line(points=(touch.x, touch.y))
-        elif self.tool_name == 'remove':
-            to_delete = None
-            # Check if a circle was touched
-            for body, obj in self.cmap.iteritems():
-                p = body.position
-                radius, color, rect = obj
-                distance = hypot(touch.x-p.x, touch.y-p.y)
-                if distance < radius:
-                    to_delete = body
-                    break
-            if to_delete:
-                self.space.remove(body)
-                self.space.remove(self.shape_map[body])
-                self.canvas.remove(rect)
-                del self.cmap[body]
-                del self.shape_map[body]
-            else:
-                # Check if a static segment was touched
-                for segment, line in self.smap.iteritems():
-                    #print touch, segment.a, segment.b
-                    np = segment_nearest_point(touch, Vector(segment.a),
-                        Vector(segment.b))
-                    distance = hypot(touch.x - np.x, touch.y - np.y)
-                    if distance < 5:
-                        to_delete = segment
-                        break
-                if to_delete:
-                    self.space.remove_static(segment)
-                    self.canvas.remove(line)
-                    del self.smap[segment]
-
+        elif self.tool_name == 'remove': # Removing an item
+            self.remove_object_at_pos(touch.x, touch.y)
+        elif self.tool_name == 'remove': # Removing an item
+            self.remove_object_at_pos(touch.x, touch.y)
+        elif self.tool_name == 'impulse': # Apply impulse to object
+            circle_body, rect = self._circle_at_pos(touch.x, touch.y)
+            if circle_body:
+                userdata['impulse_body'] = circle_body
+                arrow = ArrowPointer(pos = Vector(touch.x, touch.y),
+                    canvas=self.canvas)
+                userdata['impulse_arrow'] = arrow
 
     def on_touch_move(self, touch):
         userdata = touch.ud
@@ -234,14 +211,48 @@ class SimulatorCanvas(Widget):
             del userdata['circle']
 
     def clear_all(self):
-        for body, obj in self.cmap.iteritems():
+        for body, obj in self.circle_map.iteritems():
             radius, color, rect = obj
             self.space.remove(body)
             self.space.remove(self.shape_map[body])
             self.canvas.remove(rect)
-        self.cmap = {}
+        self.circle_map = {}
         self.shape_map = {}
-        for segment, line in self.smap.iteritems():
+        for segment, line in self.segment_map.iteritems():
             self.space.remove_static(segment)
             self.canvas.remove(line)
-        self.smap = {}
+        self.segment_map = {}
+
+    def remove_object_at_pos(self, x, y):
+        """ Remove object located at position x, y """
+        delete_body, rect = self._circle_at_pos(x, y)
+        if delete_body:
+            self.space.remove(delete_body)
+            self.space.remove(self.shape_map[delete_body])
+            self.canvas.remove(rect)
+            del self.circle_map[delete_body]
+            del self.shape_map[delete_body]
+        else:
+            # Check if a static segment was touched
+            for segment, line in self.segment_map.iteritems():
+                #print touch, segment.a, segment.b
+                np = segment_nearest_point(Vector(x, y), Vector(segment.a),
+                    Vector(segment.b))
+                distance = hypot(x - np.x, y - y)
+                if distance < 5:
+                    to_delete = segment
+                    break
+            if to_delete:
+                self.space.remove_static(segment)
+                self.canvas.remove(line)
+                del self.segment_map[segment]
+
+    def _circle_at_pos(self, x, y):
+        # Return (radius, rect, circle_body) of circle at pos x,y
+        for body, obj in self.circle_map.iteritems():
+            p = body.position
+            radius, color, rect = obj
+            distance = hypot(x-p.x, y-p.y)
+            if distance < radius:
+                return (body, rect)
+        return (None, None)
