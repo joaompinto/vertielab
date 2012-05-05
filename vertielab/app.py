@@ -23,7 +23,6 @@ from kivy.uix.boxlayout import BoxLayout
 from vertielab.simulatorcanvas import SimulatorCanvas
 from vertielab.toolbox import ToolBox
 
-
 class VertieLabApp(App):
 
     toolbox = ObjectProperty(None)

@@ -48,10 +48,11 @@ class SimulatorCanvas(Widget):
         #self._hue = 0
         self.init_physics()
         self.bind(size=self.update_bounds, pos=self.update_bounds)
-        self.texture = Image(join(dirname(__file__),
+        self.circle_texture = Image(join(dirname(__file__),
             '..', 'data', 'circle.png'), mipmap=True).texture
         Clock.schedule_interval(self.step,1/30)
         self.static_tool = False
+
 
     def init_physics(self):
         # create the space for physics simulation
@@ -125,9 +126,9 @@ class SimulatorCanvas(Widget):
         with self.canvas:
             #self._hue = (self._hue + 0.01) % 1
             #color = Color(self._hue, 1, 1, mode='hsv')
-            color = Color(88, 1, 1)
+            color = Color(1, 0, 0)
             rect = Rectangle(
-                texture=self.texture,
+                texture=self.circle_texture,
                 pos=(x - radius, y - radius),
                 size=(radius * 2, radius * 2))
         self.circle_map[body] = (radius, color, rect)
@@ -144,6 +145,7 @@ class SimulatorCanvas(Widget):
         seg.elasticity = 0.5
         self.space.add_static(seg)
         with self.canvas:
+            Color(1, 1, 1)
             line = Line(points=(a.x, a.y, b.x, b.y))
         self.segment_map[seg] = line
 
@@ -156,14 +158,16 @@ class SimulatorCanvas(Widget):
         if self.tool_name == 'circle': # Starting a circle
             radius = 20
             with self.canvas:
+                Color(1, 0, 0)
                 rect = Rectangle(
-                    texture = self.texture,
+                    texture = self.circle_texture,
                     pos=(touch.x - radius, touch.y - radius),
                     size=(radius * 2, radius * 2))
             self.circle_center = Vector(touch.x, touch.y)
             userdata['circle'] = rect
         elif self.tool_name == 'polygon': # Starting a static line segment
             with self.canvas:
+                Color(1, 1, 1)
                 userdata['line'] = Line(points=(touch.x, touch.y))
         elif self.tool_name == 'remove': # Removing an item
             self.remove_object_at_pos(touch.x, touch.y)
@@ -172,13 +176,15 @@ class SimulatorCanvas(Widget):
         elif self.tool_name == 'impulse': # Apply impulse to object
             circle_body, rect = self._circle_at_pos(touch.x, touch.y)
             if circle_body:
+                circle_body.reset_forces()
                 userdata['impulse_body'] = circle_body
-                arrow = ArrowPointer(pos = Vector(touch.x, touch.y),
-                    canvas=self.canvas)
+                arrow = ArrowPointer(pos=Vector(touch.x, touch.y))
                 userdata['impulse_arrow'] = arrow
+                self.add_widget(arrow)
 
     def on_touch_move(self, touch):
         userdata = touch.ud
+        impulse_arrow = userdata.get('impulse_arrow')
         with self.canvas:
             if 'circle' in userdata:
                 radius = hypot(touch.x - self.circle_center.x,
@@ -188,14 +194,18 @@ class SimulatorCanvas(Widget):
                 userdata['circle'].pos = (self.circle_center.x - radius,
                     self.circle_center.y - radius)
                 userdata['circle'].size = (radius*2, radius*2)
-            if 'line' in userdata:
+            elif 'line' in userdata:
                 line = userdata['line']
                 if len(line.points) > 2:
                     line.points = line.points[:2]
                 line.points += (touch.x, touch.y)
+            elif impulse_arrow:
+                impulse_arrow.tail_pos = Vector(touch.x, touch.y)
+
 
     def on_touch_up(self, touch):
         userdata = touch.ud
+        impulse_arrow = userdata.get('impulse_arrow')
         if 'line' in userdata:
             line = userdata['line']
             if len(line.points) > 2:
@@ -209,6 +219,13 @@ class SimulatorCanvas(Widget):
             self.add_circle(x, y, radius)
             self.canvas.remove(circle)
             del userdata['circle']
+        elif impulse_arrow:
+            impulse = Vector((impulse_arrow.x - impulse_arrow.tail_pos[0])*1000,
+                           (impulse_arrow.y - impulse_arrow.tail_pos[1])*1000)
+            userdata['impulse_body'].apply_impulse(impulse, Vector(0,0))
+            arrow = userdata['impulse_arrow']
+            self.remove_widget(arrow)
+            del userdata['impulse_arrow']
 
     def clear_all(self):
         for body, obj in self.circle_map.iteritems():

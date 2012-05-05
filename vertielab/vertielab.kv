@@ -42,10 +42,13 @@
                 size: 40, 40
         Button:
             name: 'impulse'
-            text: 'Impulse'
             on_press: root.on_press_tool(self)
             size_hint: 1, None
             height: 50
+            Image:
+                source: 'data/impulse.png'
+                pos: self.parent.center_x-20, self.parent.center_y-20
+                size: 40, 40
         Button:
             name: 'clear_all'
             text: "Clear"
@@ -58,6 +61,8 @@
     size: self.size
     pos: self.pos
     canvas.after:
+        Color:
+            rgb: 255 / 255., 255 / 255., 255 / 255.
         Line:
             points: [self.x, self.top, self.right, self.top]
         Line:
